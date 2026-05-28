@@ -7,3 +7,6 @@ nltk
 PySastrawi
 openpyxl
 plotly
+requests
+beautifulsoup4
+ 
