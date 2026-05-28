@@ -298,7 +298,8 @@ def search_news_gnews(query: str, num_results: int = 5) -> list:
         if resp.status_code != 200:
             return []
 
-        soup  = BeautifulSoup(resp.content, features="xml")
+        # Gunakan html.parser (built-in Python, tidak perlu install library tambahan)
+        soup  = BeautifulSoup(resp.content, features="html.parser")
         items = soup.find_all("item")[:num_results]
         results = []
 
