@@ -11,7 +11,7 @@ from nltk.corpus import stopwords
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 import requests
 from bs4 import BeautifulSoup
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # KONFIGURASI HALAMAN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,12 +76,12 @@ st.markdown("""
     footer { visibility:hidden; }
 </style>
 """, unsafe_allow_html=True)
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # KONSTANTA
 # ─────────────────────────────────────────────────────────────────────────────
 YEAR_MAPPING = {2019: 0, 2020: 1, 2021: 2, 2022: 3, 2023: 4, 2024: 5}
-
+ 
 NAME_LIST = [
     "Abadi Nusantara Hijau Investam", "Ace Oldfields Tbk.", "Adhi Kartiko Pratama Tbk.",
     "Agro Bahari Nusantara Tbk.", "Agro Yasa Lestari Tbk.", "Agung Menjangan Mas Tbk.",
@@ -173,9 +173,9 @@ NAME_LIST = [
     "Wilmar Cahaya Indonesia Tbk.", "Wilton Makmur Indonesia Tbk.", "Wismilak Inti Makmur Tbk.",
     "Xolare RCR Energy Tbk.", "Yanaprima Hastapersada Tbk",
 ]
-
+ 
 NAME_MAPPING = {name: i for i, name in enumerate(NAME_LIST)}
-
+ 
 FITUR = [
     "Total Pendapatan", "Total Pendapatan T - 1", "Laba Bersih Tahun Berjalan",
     "Aset", "Aset IDR", "Ekuitas", "Ekuitas IDR", "Liabilitas",
@@ -185,20 +185,20 @@ FITUR = [
     "ROE", "Current Ratio", "Ukuran Perusahaan",
     "Pertumbuhan Penjualan", "DER", "PBV", "Persentase Dewan Komisaris",
 ]
-
+ 
 FITUR_RUPIAH = {
     "Total Pendapatan", "Total Pendapatan T - 1", "Laba Bersih Tahun Berjalan",
     "Aset", "Aset IDR", "Ekuitas", "Ekuitas IDR", "Liabilitas",
     "Aset Lancar", "Liabilitas Jangka Pendek", "Saham Beredar",
     "Market Value", "Close Price", "Adjusted Close Price",
 }
-
+ 
 KODE_ADA_SENTIMEN = {
     "AVIA", "BHIT", "BISI", "BNBR", "BRMS", "BRPT", "BWPT", "CAKK",
     "CLEO", "CMNT", "CMRY", "CSRA", "DKFT", "DLTA", "DSFI", "DYAN",
     "FASW", "GGRM", "GGRP", "GZCO",
 }
-
+ 
 NAMA_KE_KODE = {
     "Avia Avian Tbk."               : "AVIA",
     "MNC Asia Holding Tbk."         : "BHIT",
@@ -219,7 +219,7 @@ NAMA_KE_KODE = {
     "Gudang Garam Tbk."             : "GGRM",
     "Gozco Plantations Tbk."        : "GZCO",
 }
-
+ 
 # Query pencarian yang dioptimasi untuk setiap perusahaan
 NAMA_QUERY = {
     "Avia Avian Tbk."               : "Avia Avian AVIA saham",
@@ -241,26 +241,24 @@ NAMA_QUERY = {
     "Gudang Garam Tbk."             : "Gudang Garam GGRM rokok saham",
     "Gozco Plantations Tbk."        : "Gozco Plantations GZCO saham",
 }
-
+ 
 # Media resmi Indonesia untuk validasi sumber berita
 SUMBER_RESMI = {
-    'detik.com', 'kompas.com', 'liputan6.com', 'cnnindonesia.com',
-    'beritasatu.com', 'mediaindonesia.com', 'antaranews.com',
-    'jpnn.com', 'tribunnews.com', 'viva.co.id', 'kontan.co.id',
-    'bisnis.com', 'idx.co.id', 'ojk.go.id', 'bloomberg.com',
-    'reuters.com', 'cnbc.com', 'tempo.co', 'okezone.com',
-    'suara.com', 'kumparan.com', 'idxchannel.com', 'investor.id',
+    'idx.co.id', 'reuters.com', 'kompas.com', 'cnnindonesia.com',
+    'bloomberg.com', 'idxchannel.com', 'investor.id', 'mediaindonesia.com',
+    'kontan.co.id', 'bisnis.com', 'ojk.go.id', 'cnbc.com',
+    'tempo.co', 'okezone.com', 'suara.com', 'kumparan.com',
 }
-
+ 
 SEPARATOR_LABEL = "──────── 248 PERUSAHAAN TANPA DATA SENTIMEN ────────"
-
+ 
 def build_company_options():
     with_sentimen    = sorted(NAMA_KE_KODE.keys())
     without_sentimen = sorted(n for n in NAME_LIST if n not in NAMA_KE_KODE)
     return with_sentimen + [SEPARATOR_LABEL] + without_sentimen
-
+ 
 COMPANY_OPTIONS = build_company_options()
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # FUNGSI PENCARIAN BERITA
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,12 +272,70 @@ def validate_source(source_url: str) -> tuple:
         return False, "-"
     except:
         return False, "-"
-
-
+ 
+ 
+def fetch_article_summary(url: str, max_words: int = 50) -> str:
+    """
+    Fetch halaman artikel dan ambil max_words kata pertama dari konten utama.
+    Hanya dipanggil untuk sumber yang terverifikasi.
+    Menggunakan html.parser (built-in Python).
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
+        }
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code != 200:
+            return ""
+ 
+        soup = BeautifulSoup(resp.content, features="html.parser")
+ 
+        # Hapus elemen yang tidak relevan
+        for tag in soup(["script", "style", "nav", "header",
+                         "footer", "aside", "figure", "figcaption"]):
+            tag.decompose()
+ 
+        # Cari konten artikel dari selector yang umum dipakai media Indonesia
+        konten = ""
+        for selector in [
+            "article", ".article-content", ".detail-text",
+            ".read-page--article-body", ".post-content",
+            ".entry-content", ".content-body", "div.detail",
+            "div.artikel", ".story-body",
+        ]:
+            tags = soup.select(selector)
+            if tags:
+                teks = " ".join(t.get_text(separator=" ", strip=True) for t in tags[:5])
+                if len(teks.split()) >= 20:
+                    konten = teks
+                    break
+ 
+        if not konten:
+            # Fallback: ambil 10 paragraf pertama
+            paragraphs = soup.find_all("p")
+            konten = " ".join(p.get_text(strip=True) for p in paragraphs[:10])
+ 
+        # Bersihkan whitespace berlebih
+        konten = " ".join(konten.split())
+ 
+        # Ambil max_words kata pertama
+        words = konten.split()
+        if not words:
+            return ""
+        if len(words) <= max_words:
+            return konten
+        return " ".join(words[:max_words]) + "..."
+ 
+    except Exception:
+        return ""
+ 
+ 
 def search_news_gnews(query: str, num_results: int = 5) -> list:
     """
-    Cari berita menggunakan Google News RSS feed.
-    Gratis, tanpa API key, hasilnya dari sumber resmi.
+    Cari berita via Google News RSS.
+    Untuk sumber terverifikasi, otomatis fetch summary 50 kata dari artikel.
+    Parser: html.parser (built-in Python).
     """
     try:
         import urllib.parse
@@ -297,38 +353,45 @@ def search_news_gnews(query: str, num_results: int = 5) -> list:
         resp = requests.get(rss_url, headers=headers, timeout=8)
         if resp.status_code != 200:
             return []
-
-        # Gunakan html.parser (built-in Python, tidak perlu install library tambahan)
+ 
         soup  = BeautifulSoup(resp.content, features="html.parser")
         items = soup.find_all("item")[:num_results]
         results = []
-
+ 
         for item in items:
             title      = item.find("title")
             link       = item.find("link")
-            pubdate    = item.find("pubDate")
+            pubdate    = item.find("pubdate")
             source_tag = item.find("source")
-
-            title_text  = title.get_text(strip=True)   if title      else "Tanpa Judul"
-            link_text   = link.get_text(strip=True)    if link       else "#"
-            date_text   = pubdate.get_text(strip=True) if pubdate    else "-"
+ 
+            title_text  = title.get_text(strip=True)      if title      else "Tanpa Judul"
+            link_text   = link.get_text(strip=True)       if link       else "#"
+            date_text   = pubdate.get_text(strip=True)    if pubdate    else ""
             source_name = source_tag.get_text(strip=True) if source_tag else ""
-
+ 
             is_valid, domain = validate_source(link_text + " " + source_name)
-
+ 
+            # Fetch summary hanya untuk sumber terverifikasi
+            summary = ""
+            if is_valid and link_text and link_text != "#":
+                summary = fetch_article_summary(link_text, max_words=50)
+ 
             results.append({
                 "title"   : title_text,
                 "link"    : link_text,
                 "date"    : date_text,
                 "source"  : source_name if source_name else domain,
                 "is_valid": is_valid,
+                "summary" : summary,
             })
-
+ 
         return results
     except Exception as e:
         return [{"error": str(e)}]
-
-
+    except Exception as e:
+        return [{"error": str(e)}]
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOAD RESOURCES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,10 +399,10 @@ def search_news_gnews(query: str, num_results: int = 5) -> list:
 def download_nltk():
     for pkg in ["punkt", "stopwords", "punkt_tab"]:
         nltk.download(pkg, quiet=True)
-
+ 
 download_nltk()
-
-
+ 
+ 
 @st.cache_resource
 def load_models():
     return (
@@ -348,8 +411,8 @@ def load_models():
         joblib.load("tfidf_model.pkl"),
         joblib.load("ensemble_model_tak_terstruktur.pkl"),
     )
-
-
+ 
+ 
 @st.cache_resource
 def load_nlp():
     data_stop    = pd.read_excel("pengecualian_stopword.xlsx")
@@ -357,8 +420,8 @@ def load_nlp():
     sw           = set(stopwords.words("indonesian")) - stopwords_ex
     stemmer      = StemmerFactory().create_stemmer()
     return sw, stemmer
-
-
+ 
+ 
 @st.cache_data
 def load_lookup() -> dict:
     df     = pd.read_excel("dc_dataCustom.xlsx")
@@ -397,8 +460,8 @@ def load_lookup() -> dict:
             "Persentase Dewan Komisaris": float(row["Persentase Dewan Komisaris"]),
         }
     return lookup
-
-
+ 
+ 
 @st.cache_data
 def load_tren(nama: str) -> pd.DataFrame:
     lookup = load_lookup()
@@ -410,8 +473,8 @@ def load_tren(nama: str) -> pd.DataFrame:
             r.update(lookup[key])
             rows.append(r)
     return pd.DataFrame(rows).set_index("Tahun") if rows else pd.DataFrame()
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -424,8 +487,8 @@ if "title_input"   not in st.session_state: st.session_state["title_input"]   = 
 if "content_input" not in st.session_state: st.session_state["content_input"] = ""
 if "news_results"  not in st.session_state: st.session_state["news_results"]  = []
 if "news_searched" not in st.session_state: st.session_state["news_searched"] = False
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # CALLBACK AUTOFILL
 # ─────────────────────────────────────────────────────────────────────────────
@@ -448,8 +511,8 @@ def do_autofill():
     st.session_state["show_hasil"]    = False
     st.session_state["news_results"]  = []
     st.session_state["news_searched"] = False
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # PREPROCESSING TEKS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -461,15 +524,15 @@ def datacleaning(text: str) -> str:
     text = re.sub(r"http\S+", "", text)
     text = re.sub(r"[0-9]+", "", text)
     return text.replace("\n", " ").strip()
-
-
+ 
+ 
 def preprocess_text(raw: str, sw, stemmer) -> str:
     text     = datacleaning(raw).lower()
     tokens   = word_tokenize(text)
     filtered = " ".join(w for w in tokens if w not in sw)
     return stemmer.stem(filtered)
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # GRAFIK TREN RASIO KEUANGAN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -490,7 +553,7 @@ def buat_grafik_tren(nama: str):
         ],
         vertical_spacing=0.15, horizontal_spacing=0.10,
     )
-
+ 
     def add_line(col_name, row, col_idx, fmt=".4f"):
         if col_name not in df.columns:
             return
@@ -501,11 +564,11 @@ def buat_grafik_tren(nama: str):
             hovertemplate=f"<b>%{{x}}</b><br>{col_name}: %{{y:{fmt}}}<extra></extra>",
             showlegend=False,
         ), row=row, col=col_idx)
-
+ 
     add_line("ROE", 1, 1);            add_line("Current Ratio", 1, 2)
     add_line("DER", 2, 1);            add_line("PBV", 2, 2)
     add_line("Ukuran Perusahaan", 3, 2, fmt=".3f")
-
+ 
     if "Pertumbuhan Penjualan" in df.columns:
         vals   = df["Pertumbuhan Penjualan"].tolist()
         colors = [warna_pos if v >= 0 else warna_neg for v in vals]
@@ -515,7 +578,7 @@ def buat_grafik_tren(nama: str):
             showlegend=False,
         ), row=3, col=1)
         fig.add_hline(y=0, line_dash="dot", line_color="#aaa", line_width=1, row=3, col=1)
-
+ 
     fig.update_layout(
         title=dict(
             text=f"<b>Tren Rasio Keuangan 2019–2024 — {nama}</b>",
@@ -531,8 +594,8 @@ def buat_grafik_tren(nama: str):
                              tickvals=tahun, ticktext=tick_txt, row=i, col=j)
             fig.update_yaxes(showgrid=True, gridcolor="#e8e8e8", row=i, col=j)
     return fig
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -542,17 +605,17 @@ st.markdown("""
     <p>Prediksi kesehatan keuangan perusahaan berbasis data laporan keuangan &amp; sentimen berita</p>
 </div>
 """, unsafe_allow_html=True)
-
+ 
 with st.spinner("Memuat model & data..."):
     scaler, model_numerik, tfidf_vectorizer, model_teks = load_models()
     stop_words, stemmer = load_nlp()
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEKSI 1 — PILIH PERUSAHAAN & TAHUN
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">🏢 Pilih Perusahaan & Tahun</div>', unsafe_allow_html=True)
-
+ 
 cy, cn = st.columns([1, 3])
 with cy:
     year = st.selectbox("Tahun", options=list(YEAR_MAPPING.keys()),
@@ -564,21 +627,21 @@ with cn:
         help="18 perusahaan teratas memiliki data sentimen historis. "
              "248 perusahaan di bawah separator tidak punya data sentimen.",
     )
-
+ 
 if name == SEPARATOR_LABEL:
     st.warning("⚠️ Baris pembatas tidak bisa dipilih. Silakan pilih nama perusahaan yang valid.")
     st.stop()
-
+ 
 if st.session_state["autofilled"]:
     st.markdown('<span class="badge-ok">✅ Data numerik terisi otomatis. Dapat diedit manual.</span>',
                 unsafe_allow_html=True)
 else:
     st.markdown('<span class="badge-warn">⚠️ Data numerik tidak tersedia untuk kombinasi ini — isi manual.</span>',
                 unsafe_allow_html=True)
-
+ 
 kode         = NAMA_KE_KODE.get(name)
 ada_sentimen = kode is not None and kode in KODE_ADA_SENTIMEN
-
+ 
 if ada_sentimen:
     st.markdown(f'<span class="badge-info">📰 Data sentimen tersedia (kode: <b>{kode}</b>).</span>',
                 unsafe_allow_html=True)
@@ -588,15 +651,15 @@ else:
         f'<span class="badge-warn">⚠️ <b>{name}</b> (kode: <b>{kode_disp}</b>) tidak ada di '
         f'dataset sentimen — 18 dari 266 perusahaan tercakup. Input teks berita manual.</span>',
         unsafe_allow_html=True)
-
+ 
 st.markdown("</div>", unsafe_allow_html=True)
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEKSI 2 — LAPORAN KEUANGAN
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📈 Laporan Keuangan</div>', unsafe_allow_html=True)
-
+ 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
     st.markdown(f'<div class="metric-mini"><div class="val">Rp {st.session_state["Total Pendapatan"]:,.0f}</div><div class="lbl">Total Pendapatan</div></div>', unsafe_allow_html=True)
@@ -606,7 +669,7 @@ with m3:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["DER"]:.4f}</div><div class="lbl">DER</div></div>', unsafe_allow_html=True)
 with m4:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["Current Ratio"]:.4f}</div><div class="lbl">Current Ratio</div></div>', unsafe_allow_html=True)
-
+ 
 m5, m6, m7 = st.columns(3)
 with m5:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["Ukuran Perusahaan"]:.4f}</div><div class="lbl">Ukuran Perusahaan</div></div>', unsafe_allow_html=True)
@@ -614,7 +677,7 @@ with m6:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["Pertumbuhan Penjualan"]*100:.2f}%</div><div class="lbl">Pertumbuhan Penjualan</div></div>', unsafe_allow_html=True)
 with m7:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["PBV"]:.4f}</div><div class="lbl">PBV</div></div>', unsafe_allow_html=True)
-
+ 
 m8, m9, m10 = st.columns(3)
 with m8:
     st.markdown(f'<div class="metric-mini"><div class="val">{st.session_state["Saham Beredar"]:,.0f}</div><div class="lbl">Saham Beredar</div></div>', unsafe_allow_html=True)
@@ -622,9 +685,9 @@ with m9:
     st.markdown(f'<div class="metric-mini"><div class="val">Rp {st.session_state["Market Value"]:,.0f}</div><div class="lbl">Market Value</div></div>', unsafe_allow_html=True)
 with m10:
     st.markdown(f'<div class="metric-mini"><div class="val">Rp {st.session_state["Close Price"]:,.0f}</div><div class="lbl">Close Price</div></div>', unsafe_allow_html=True)
-
+ 
 st.divider()
-
+ 
 with st.expander("🔧 Detail Input 24 Fitur — klik untuk membuka/edit manual", expanded=False):
     st.caption("Semua fitur sudah terisi otomatis dari dataset. "
                "Buka panel ini hanya jika ingin mengubah nilai secara manual.")
@@ -637,18 +700,18 @@ with st.expander("🔧 Detail Input 24 Fitur — klik untuk membuka/edit manual"
                                 value=float(st.session_state.get(label, 0.0)),
                                 format=fmt, key=f"ni_{label}")
             inputs.append(v)
-
+ 
 st.markdown("</div>", unsafe_allow_html=True)
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEKSI 3 — CARI BERITA ONLINE  ← TEPAT DI ATAS "Data Teks Berita"
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">🔍 Cari Berita Online</div>', unsafe_allow_html=True)
-
+ 
 nama_cari_list = sorted(NAMA_KE_KODE.keys())
 col_cari1, col_cari2 = st.columns([3, 1])
-
+ 
 with col_cari1:
     idx_default  = nama_cari_list.index(name) if name in nama_cari_list else 0
     pilihan_cari = st.selectbox(
@@ -657,22 +720,22 @@ with col_cari1:
         index=idx_default,
         key="pilihan_cari_berita",
     )
-
+ 
 with col_cari2:
     st.markdown("<br>", unsafe_allow_html=True)
     cari_btn = st.button("🔍 Cari Berita", use_container_width=True, type="primary")
-
+ 
 if cari_btn:
     query = NAMA_QUERY.get(pilihan_cari, pilihan_cari + " saham Indonesia")
     with st.spinner(f"Mencari berita terkini untuk **{pilihan_cari}**..."):
         results = search_news_gnews(query, num_results=5)
         st.session_state["news_results"]  = results
         st.session_state["news_searched"] = True
-
+ 
 # Tampilkan hasil pencarian
 if st.session_state["news_searched"]:
     results = st.session_state["news_results"]
-
+ 
     if not results:
         st.info("📭 Tidak ada hasil berita. Coba lagi atau input berita secara manual.")
     elif "error" in results[0]:
@@ -681,20 +744,21 @@ if st.session_state["news_searched"]:
         jumlah_valid = sum(1 for r in results if r.get("is_valid"))
         st.success(f"✅ Ditemukan **{len(results)}** berita — **{jumlah_valid}** dari sumber terverifikasi")
         st.caption("💡 Klik link artikel, baca beritanya, lalu copy judul & isi ke kolom **Data Teks Berita** di bawah.")
-
+ 
         for i, article in enumerate(results, 1):
             is_valid   = article.get("is_valid", False)
             link       = article.get("link", "#")
             source     = article.get("source", "")
             date       = article.get("date", "")
-
+            summary    = article.get("summary", "")
+ 
             # Bangun baris meta — hanya tampilkan jika nilainya ada
             meta_parts = []
             if source and source != "-":
                 meta_parts.append(source)
             if date and date != "-":
                 meta_parts.append(date)
-
+ 
             sumber_badge = (
                 '<span class="news-valid">✅ Sumber Terverifikasi</span>'
                 if is_valid else
@@ -703,30 +767,49 @@ if st.session_state["news_searched"]:
             meta_line = " &nbsp;|&nbsp; ".join(meta_parts) + (
                 f" &nbsp;|&nbsp; {sumber_badge}" if meta_parts else sumber_badge
             )
-
-            # Buat teks link yang bersih
+ 
+            # Label link
             link_label = "🔗 Buka Artikel"
             if source and source != "-":
                 link_label = f"🔗 Buka di {source}"
-
+ 
+            # Summary — hanya untuk sumber terverifikasi
+            if is_valid and summary:
+                summary_html = (
+                    f'<div style="font-size:0.88rem;color:#444;line-height:1.6;'
+                    f'margin-top:0.5rem;padding-top:0.5rem;'
+                    f'border-top:1px solid #e0e0e0;">'
+                    f'<b>Ringkasan:</b> {summary}'
+                    f'</div>'
+                )
+            elif is_valid and not summary:
+                summary_html = (
+                    '<div style="font-size:0.82rem;color:#999;margin-top:0.4rem;">'
+                    'Ringkasan tidak tersedia — buka artikel untuk membaca isi lengkap.'
+                    '</div>'
+                )
+            else:
+                summary_html = ""
+ 
             st.markdown(
                 f'<div class="news-card">'
                 f'<div class="news-title">{i}. {article["title"]}</div>'
                 f'<div class="news-meta">{meta_line}</div>'
+                f'{summary_html}'
                 f'</div>',
                 unsafe_allow_html=True,
             )
             if link and link != "#":
                 st.markdown(f"&nbsp;&nbsp;&nbsp;[{link_label}]({link})")
-
+ 
 st.markdown("</div>", unsafe_allow_html=True)
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEKSI 4 — DATA TEKS BERITA
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📰 Data Teks Berita</div>', unsafe_allow_html=True)
-
+ 
 if not ada_sentimen:
     st.markdown(
         '<div class="result-box r-neutral" style="margin-bottom:0.8rem;">'
@@ -734,7 +817,7 @@ if not ada_sentimen:
         "Masukkan berita terkini secara manual. "
         "Model sentimen tetap memproses teks yang Anda tulis."
         "</div>", unsafe_allow_html=True)
-
+ 
 tc, cc = st.columns([1, 2])
 with tc:
     title_input = st.text_area(
@@ -748,9 +831,9 @@ with cc:
         placeholder="Tulis atau tempel isi berita terkait perusahaan di sini...",
         key="content_input",
     )
-
+ 
 st.markdown("</div>", unsafe_allow_html=True)
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOMBOL PREDIKSI
 # ─────────────────────────────────────────────────────────────────────────────
@@ -760,27 +843,27 @@ with col_btn[1]:
     prediksi_btn = st.button(
         "🔍 Jalankan Prediksi", use_container_width=True, type="primary"
     )
-
+ 
 if prediksi_btn:
     st.session_state["show_hasil"] = True
-
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # HASIL PREDIKSI
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state["show_hasil"]:
-
+ 
     enc_year   = YEAR_MAPPING[year]
     enc_name   = NAME_MAPPING[name]
     arr_scaled = scaler.transform(np.array([[enc_year, enc_name] + inputs]))
     pred_num   = model_numerik.predict(arr_scaled)[0]
     label_num  = "Baik" if str(pred_num).upper() == "BAIK" else "Tidak Baik"
-
+ 
     combined    = (
         st.session_state["title_input"] + " " +
         st.session_state["content_input"]
     ).strip()
     teks_kosong = len(combined) < 5
-
+ 
     if teks_kosong:
         label_teks    = None
         mode_sentimen = "kosong"
@@ -790,12 +873,12 @@ if st.session_state["show_hasil"]:
         pred_teks     = model_teks.predict(tfidf_vec)[0]
         label_teks    = "Positif" if str(pred_teks).lower() == "positif" else "Negatif"
         mode_sentimen = "historis" if ada_sentimen else "manual"
-
+ 
     st.markdown("---")
     st.markdown("### 📋 Hasil Prediksi")
-
+ 
     r1, r2 = st.columns(2)
-
+ 
     with r1:
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">📊 Analisis Laporan Keuangan</div>', unsafe_allow_html=True)
@@ -807,11 +890,11 @@ if st.session_state["show_hasil"]:
             f'<b>{"baik" if label_num == "Baik" else "kurang baik"}</b>.</div>',
             unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
+ 
     with r2:
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
         st.markdown('<div class="section-title">📰 Analisis Sentimen Berita</div>', unsafe_allow_html=True)
-
+ 
         if mode_sentimen == "kosong":
             st.markdown(
                 '<div class="result-box r-neutral">⏭️ <b>Prediksi Sentimen Dilewati</b><br>'
@@ -841,12 +924,12 @@ if st.session_state["show_hasil"]:
                 f'Dipandang <b>{"baik" if label_teks == "Positif" else "kurang baik"}</b> '
                 f'berdasarkan analisis berita.</div>',
                 unsafe_allow_html=True)
-
+ 
         st.markdown("</div>", unsafe_allow_html=True)
-
+ 
     st.markdown("---")
     st.markdown("### 🏦 Kesimpulan Rekomendasi Investasi")
-
+ 
     if mode_sentimen == "kosong":
         if label_num == "Baik":
             st.markdown(
@@ -875,20 +958,20 @@ if st.session_state["show_hasil"]:
             '<div class="result-box r-no">❌ <b>Tidak direkomendasikan untuk berinvestasi.</b><br>'
             'Kondisi keuangan dan sentimen berita keduanya menunjukkan sinyal negatif.</div>',
             unsafe_allow_html=True)
-
+ 
     st.markdown("---")
     st.markdown("### 📉 Tren Rasio Keuangan (2019–2024)")
-
+ 
     fig_tren = buat_grafik_tren(name)
     if fig_tren is not None:
         st.plotly_chart(fig_tren, use_container_width=True)
-
+ 
         df_tren    = load_tren(name)
         kolom_show = ["ROE", "Current Ratio", "DER", "PBV",
                       "Pertumbuhan Penjualan", "Ukuran Perusahaan"]
         kolom_ada  = [c for c in kolom_show if c in df_tren.columns]
         df_tampil  = df_tren[kolom_ada].copy()
-
+ 
         if "Pertumbuhan Penjualan" in df_tampil.columns:
             df_tampil["Pertumbuhan Penjualan"] = df_tampil["Pertumbuhan Penjualan"].map(
                 lambda x: f"{x*100:.2f}%"
@@ -896,7 +979,7 @@ if st.session_state["show_hasil"]:
         for c in ["ROE", "Current Ratio", "DER", "PBV", "Ukuran Perusahaan"]:
             if c in df_tampil.columns:
                 df_tampil[c] = df_tampil[c].map(lambda x: f"{x:.4f}")
-
+ 
         st.caption("Tabel ringkas rasio keuangan per tahun")
         st.dataframe(df_tampil, use_container_width=True)
     else:
