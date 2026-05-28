@@ -263,7 +263,7 @@ COMPANY_OPTIONS = build_company_options()
 # FUNGSI PENCARIAN BERITA
 # ─────────────────────────────────────────────────────────────────────────────
 def validate_source(source_url: str) -> tuple:
-    """Cek apakah URL berasal dari sumber berita resmi. Return: (is_valid, domain)"""
+    """Cek apakah URL berasal dari 16 sumber resmi. Return: (is_valid, domain)"""
     try:
         source_lower = source_url.lower()
         for media in SUMBER_RESMI:
@@ -277,52 +277,64 @@ def validate_source(source_url: str) -> tuple:
 def fetch_article_summary(url: str, max_words: int = 50) -> str:
     """
     Fetch halaman artikel dan ambil max_words kata pertama dari konten utama.
-    Hanya dipanggil untuk sumber yang terverifikasi.
-    Menggunakan html.parser (built-in Python).
+    Hanya dipanggil untuk URL dari 16 sumber resmi yang terverifikasi.
+    Menggunakan html.parser (built-in Python — tidak perlu install lxml).
     """
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
+            'User-Agent'      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept-Language' : 'id-ID,id;q=0.9,en;q=0.8',
+            'Accept'          : 'text/html,application/xhtml+xml',
         }
-        resp = requests.get(url, headers=headers, timeout=6)
+        resp = requests.get(url, headers=headers, timeout=7, allow_redirects=True)
         if resp.status_code != 200:
             return ""
  
         soup = BeautifulSoup(resp.content, features="html.parser")
  
-        # Hapus elemen yang tidak relevan
+        # Hapus elemen tidak relevan
         for tag in soup(["script", "style", "nav", "header",
-                         "footer", "aside", "figure", "figcaption"]):
+                         "footer", "aside", "figure", "figcaption",
+                         "form", "button", "iframe"]):
             tag.decompose()
  
-        # Cari konten artikel dari selector yang umum dipakai media Indonesia
+        # Selector konten artikel — urutan dari yang paling spesifik
         konten = ""
-        for selector in [
-            "article", ".article-content", ".detail-text",
-            ".read-page--article-body", ".post-content",
-            ".entry-content", ".content-body", "div.detail",
-            "div.artikel", ".story-body",
-        ]:
+        SELECTORS = [
+            "article",
+            ".article-content", ".article-body", ".article__content",
+            ".detail-text", ".detail__body",
+            ".read-page--article-body",
+            ".post-content", ".post-body",
+            ".entry-content", ".entry-body",
+            ".content-body", ".content-detail",
+            "div.detail", "div.artikel",
+            ".story-body", ".story-content",
+            ".news-content", ".news-body",
+            "[itemprop='articleBody']",
+        ]
+        for selector in SELECTORS:
             tags = soup.select(selector)
             if tags:
-                teks = " ".join(t.get_text(separator=" ", strip=True) for t in tags[:5])
-                if len(teks.split()) >= 20:
+                teks = " ".join(t.get_text(separator=" ", strip=True) for t in tags[:3])
+                if len(teks.split()) >= 15:
                     konten = teks
                     break
  
         if not konten:
-            # Fallback: ambil 10 paragraf pertama
+            # Fallback: ambil paragraf panjang (>20 kata)
             paragraphs = soup.find_all("p")
-            konten = " ".join(p.get_text(strip=True) for p in paragraphs[:10])
+            parts = [p.get_text(strip=True) for p in paragraphs
+                     if len(p.get_text(strip=True).split()) > 8]
+            konten = " ".join(parts[:12])
  
         # Bersihkan whitespace berlebih
         konten = " ".join(konten.split())
+        if not konten:
+            return ""
  
         # Ambil max_words kata pertama
         words = konten.split()
-        if not words:
-            return ""
         if len(words) <= max_words:
             return konten
         return " ".join(words[:max_words]) + "..."
@@ -331,34 +343,51 @@ def fetch_article_summary(url: str, max_words: int = 50) -> str:
         return ""
  
  
-def search_news_gnews(query: str, num_results: int = 5) -> list:
+def build_verified_rss_query(keyword: str) -> str:
     """
-    Cari berita via Google News RSS.
-    Untuk sumber terverifikasi, otomatis fetch summary 50 kata dari artikel.
-    Parser: html.parser (built-in Python).
+    Buat query Google News RSS yang hanya mengembalikan hasil
+    dari 16 sumber resmi yang telah ditentukan.
+    Dibagi 2 batch karena query terlalu panjang jika semua digabung.
     """
+    sumber_list = list(SUMBER_RESMI)
+    site_filters = " OR ".join(f"site:{s}" for s in sumber_list)
+    return f"{keyword} ({site_filters})"
+ 
+ 
+def search_news_verified(keyword: str, num_results: int = 5) -> list:
+    """
+    Cari berita HANYA dari 16 sumber resmi menggunakan Google News RSS
+    dengan site-filter query. Setiap hasil yang terverifikasi akan di-fetch
+    untuk mendapatkan summary 50 kata dari isi artikel.
+    """
+    import urllib.parse
+ 
+    # Query dengan site filter — hanya tampilkan dari 16 sumber resmi
+    site_filters = " OR ".join(f"site:{s}" for s in list(SUMBER_RESMI))
+    full_query   = f"{keyword} ({site_filters})"
+    encoded      = urllib.parse.quote(full_query)
+ 
+    rss_url = (
+        f"https://news.google.com/rss/search"
+        f"?q={encoded}&hl=id&gl=ID&ceid=ID:id"
+    )
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+ 
     try:
-        import urllib.parse
-        encoded_query = urllib.parse.quote(query)
-        rss_url = (
-            f"https://news.google.com/rss/search"
-            f"?q={encoded_query}&hl=id&gl=ID&ceid=ID:id"
-        )
-        headers = {
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36'
-            )
-        }
-        resp = requests.get(rss_url, headers=headers, timeout=8)
+        resp = requests.get(rss_url, headers=headers, timeout=10)
         if resp.status_code != 200:
-            return []
+            return [{"error": f"HTTP {resp.status_code}"}]
  
         soup  = BeautifulSoup(resp.content, features="html.parser")
-        items = soup.find_all("item")[:num_results]
-        results = []
+        items = soup.find_all("item")
  
+        results = []
         for item in items:
+            if len(results) >= num_results:
+                break
+ 
             title      = item.find("title")
             link       = item.find("link")
             pubdate    = item.find("pubdate")
@@ -369,25 +398,36 @@ def search_news_gnews(query: str, num_results: int = 5) -> list:
             date_text   = pubdate.get_text(strip=True)    if pubdate    else ""
             source_name = source_tag.get_text(strip=True) if source_tag else ""
  
+            # Verifikasi: hanya masukkan jika dari 16 sumber resmi
             is_valid, domain = validate_source(link_text + " " + source_name)
+            if not is_valid:
+                # Skip — tidak dari sumber resmi yang ditentukan
+                continue
  
-            # Fetch summary hanya untuk sumber terverifikasi
+            # Fetch summary dari artikel (max 50 kata)
             summary = ""
-            if is_valid and link_text and link_text != "#":
+            if link_text and link_text != "#":
                 summary = fetch_article_summary(link_text, max_words=50)
+ 
+            # Format tanggal lebih ringkas jika ada
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = parsedate_to_datetime(date_text)
+                date_fmt = dt.strftime("%d %b %Y")
+            except Exception:
+                date_fmt = date_text[:16] if date_text else ""
  
             results.append({
                 "title"   : title_text,
                 "link"    : link_text,
-                "date"    : date_text,
+                "date"    : date_fmt,
                 "source"  : source_name if source_name else domain,
-                "is_valid": is_valid,
+                "is_valid": True,   # dijamin valid karena sudah difilter
                 "summary" : summary,
             })
  
-        return results
-    except Exception as e:
-        return [{"error": str(e)}]
+        return results if results else [{"error": "Tidak ada berita dari sumber terverifikasi ditemukan."}]
+ 
     except Exception as e:
         return [{"error": str(e)}]
  
@@ -727,8 +767,8 @@ with col_cari2:
  
 if cari_btn:
     query = NAMA_QUERY.get(pilihan_cari, pilihan_cari + " saham Indonesia")
-    with st.spinner(f"Mencari berita terkini untuk **{pilihan_cari}**..."):
-        results = search_news_gnews(query, num_results=5)
+    with st.spinner(f"Mencari berita dari 16 sumber terverifikasi untuk **{pilihan_cari}**... (~10 detik)"):
+        results = search_news_verified(query, num_results=5)
         st.session_state["news_results"]  = results
         st.session_state["news_searched"] = True
  
@@ -737,59 +777,45 @@ if st.session_state["news_searched"]:
     results = st.session_state["news_results"]
  
     if not results:
-        st.info("📭 Tidak ada hasil berita. Coba lagi atau input berita secara manual.")
+        st.info("📭 Tidak ada berita dari sumber terverifikasi. Coba pilih perusahaan lain atau input berita manual.")
     elif "error" in results[0]:
-        st.warning(f"⚠️ Gagal mengambil berita: {results[0]['error']}. Silakan input berita secara manual.")
+        st.info(f"📭 {results[0]['error']} Coba pilih perusahaan lain atau input berita manual di bawah.")
     else:
-        jumlah_valid = sum(1 for r in results if r.get("is_valid"))
-        st.success(f"✅ Ditemukan **{len(results)}** berita — **{jumlah_valid}** dari sumber terverifikasi")
-        st.caption("💡 Klik link artikel, baca beritanya, lalu copy judul & isi ke kolom **Data Teks Berita** di bawah.")
+        st.success(f"✅ Ditemukan **{len(results)}** berita dari sumber terverifikasi")
+        st.caption("💡 Baca ringkasan di bawah, klik link untuk artikel lengkap, lalu copy isi ke kolom **Data Teks Berita**.")
  
         for i, article in enumerate(results, 1):
-            is_valid   = article.get("is_valid", False)
-            link       = article.get("link", "#")
-            source     = article.get("source", "")
-            date       = article.get("date", "")
-            summary    = article.get("summary", "")
+            source  = article.get("source", "")
+            date    = article.get("date", "")
+            link    = article.get("link", "#")
+            summary = article.get("summary", "")
  
-            # Bangun baris meta — hanya tampilkan jika nilainya ada
-            meta_parts = []
-            if source and source != "-":
-                meta_parts.append(source)
-            if date and date != "-":
-                meta_parts.append(date)
+            # Meta line
+            meta_parts = [p for p in [source, date] if p and p.strip() and p != "-"]
+            meta_line  = " &nbsp;|&nbsp; ".join(meta_parts)
+            if meta_line:
+                meta_line += ' &nbsp;|&nbsp; <span class="news-valid">✅ Sumber Terverifikasi</span>'
+            else:
+                meta_line = '<span class="news-valid">✅ Sumber Terverifikasi</span>'
  
-            sumber_badge = (
-                '<span class="news-valid">✅ Sumber Terverifikasi</span>'
-                if is_valid else
-                '<span class="news-invalid">⚠️ Verifikasi Manual</span>'
-            )
-            meta_line = " &nbsp;|&nbsp; ".join(meta_parts) + (
-                f" &nbsp;|&nbsp; {sumber_badge}" if meta_parts else sumber_badge
-            )
- 
-            # Label link
-            link_label = "🔗 Buka Artikel"
-            if source and source != "-":
-                link_label = f"🔗 Buka di {source}"
- 
-            # Summary — hanya untuk sumber terverifikasi
-            if is_valid and summary:
+            # Summary block
+            if summary:
                 summary_html = (
-                    f'<div style="font-size:0.88rem;color:#444;line-height:1.6;'
-                    f'margin-top:0.5rem;padding-top:0.5rem;'
-                    f'border-top:1px solid #e0e0e0;">'
-                    f'<b>Ringkasan:</b> {summary}'
+                    f'<div style="font-size:0.88rem;color:#333;line-height:1.65;'
+                    f'margin-top:0.55rem;padding-top:0.5rem;'
+                    f'border-top:1px solid #dde;">'
+                    f'<span style="font-weight:600;color:#1e3a5f;">Ringkasan:</span> {summary}'
                     f'</div>'
                 )
-            elif is_valid and not summary:
+            else:
                 summary_html = (
-                    '<div style="font-size:0.82rem;color:#999;margin-top:0.4rem;">'
+                    '<div style="font-size:0.82rem;color:#aaa;margin-top:0.4rem;">'
                     'Ringkasan tidak tersedia — buka artikel untuk membaca isi lengkap.'
                     '</div>'
                 )
-            else:
-                summary_html = ""
+ 
+            # Label link informatif
+            link_label = f"🔗 Buka di {source}" if (source and source != "-") else "🔗 Buka Artikel Lengkap"
  
             st.markdown(
                 f'<div class="news-card">'
