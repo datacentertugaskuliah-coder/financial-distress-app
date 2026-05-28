@@ -343,93 +343,105 @@ def fetch_article_summary(url: str, max_words: int = 50) -> str:
         return ""
  
  
-def build_verified_rss_query(keyword: str) -> str:
-    """
-    Buat query Google News RSS yang hanya mengembalikan hasil
-    dari 16 sumber resmi yang telah ditentukan.
-    Dibagi 2 batch karena query terlalu panjang jika semua digabung.
-    """
-    sumber_list = list(SUMBER_RESMI)
-    site_filters = " OR ".join(f"site:{s}" for s in sumber_list)
-    return f"{keyword} ({site_filters})"
- 
- 
 def search_news_verified(keyword: str, num_results: int = 5) -> list:
     """
-    Cari berita HANYA dari 16 sumber resmi menggunakan Google News RSS
-    dengan site-filter query. Setiap hasil yang terverifikasi akan di-fetch
-    untuk mendapatkan summary 50 kata dari isi artikel.
+    Cari berita HANYA dari 16 sumber resmi.
+    Menggunakan batch query Google News RSS (4-5 sumber per batch)
+    karena query 16 sumber sekaligus terlalu panjang untuk Google News.
+    Setiap hasil terverifikasi di-fetch untuk summary 50 kata.
     """
     import urllib.parse
  
-    # Query dengan site filter — hanya tampilkan dari 16 sumber resmi
-    site_filters = " OR ".join(f"site:{s}" for s in list(SUMBER_RESMI))
-    full_query   = f"{keyword} ({site_filters})"
-    encoded      = urllib.parse.quote(full_query)
+    # Bagi 16 sumber menjadi 4 batch kecil agar query tidak terlalu panjang
+    SUMBER_LIST = list(SUMBER_RESMI)
+    BATCH_SIZE  = 4
+    batches     = [SUMBER_LIST[i:i+BATCH_SIZE]
+                   for i in range(0, len(SUMBER_LIST), BATCH_SIZE)]
  
-    rss_url = (
-        f"https://news.google.com/rss/search"
-        f"?q={encoded}&hl=id&gl=ID&ceid=ID:id"
-    )
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
  
-    try:
-        resp = requests.get(rss_url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return [{"error": f"HTTP {resp.status_code}"}]
+    semua_items = []   # kumpulkan semua item RSS dari semua batch
  
-        soup  = BeautifulSoup(resp.content, features="html.parser")
-        items = soup.find_all("item")
- 
-        results = []
-        for item in items:
-            if len(results) >= num_results:
-                break
- 
-            title      = item.find("title")
-            link       = item.find("link")
-            pubdate    = item.find("pubdate")
-            source_tag = item.find("source")
- 
-            title_text  = title.get_text(strip=True)      if title      else "Tanpa Judul"
-            link_text   = link.get_text(strip=True)       if link       else "#"
-            date_text   = pubdate.get_text(strip=True)    if pubdate    else ""
-            source_name = source_tag.get_text(strip=True) if source_tag else ""
- 
-            # Verifikasi: hanya masukkan jika dari 16 sumber resmi
-            is_valid, domain = validate_source(link_text + " " + source_name)
-            if not is_valid:
-                # Skip — tidak dari sumber resmi yang ditentukan
+    for batch in batches:
+        try:
+            site_filter = " OR ".join(f"site:{s}" for s in batch)
+            full_query  = f"{keyword} ({site_filter})"
+            rss_url     = (
+                "https://news.google.com/rss/search"
+                f"?q={urllib.parse.quote(full_query)}&hl=id&gl=ID&ceid=ID:id"
+            )
+            resp = requests.get(rss_url, headers=headers, timeout=8)
+            if resp.status_code != 200:
                 continue
  
-            # Fetch summary dari artikel (max 50 kata)
-            summary = ""
-            if link_text and link_text != "#":
-                summary = fetch_article_summary(link_text, max_words=50)
+            soup  = BeautifulSoup(resp.content, features="html.parser")
+            items = soup.find_all("item")
+            semua_items.extend(items)
  
-            # Format tanggal lebih ringkas jika ada
-            try:
-                from email.utils import parsedate_to_datetime
-                dt = parsedate_to_datetime(date_text)
-                date_fmt = dt.strftime("%d %b %Y")
-            except Exception:
-                date_fmt = date_text[:16] if date_text else ""
+        except Exception:
+            continue   # skip batch yang gagal, lanjut ke batch berikutnya
  
-            results.append({
-                "title"   : title_text,
-                "link"    : link_text,
-                "date"    : date_fmt,
-                "source"  : source_name if source_name else domain,
-                "is_valid": True,   # dijamin valid karena sudah difilter
-                "summary" : summary,
-            })
+    if not semua_items:
+        return [{"error": "Tidak ada berita dari 16 sumber terverifikasi. "
+                          "Coba pilih perusahaan lain atau input berita manual di bawah."}]
  
-        return results if results else [{"error": "Tidak ada berita dari sumber terverifikasi ditemukan."}]
+    # Proses hasil — filter, deduplikasi, ambil max num_results
+    seen_links = set()
+    results    = []
  
-    except Exception as e:
-        return [{"error": str(e)}]
+    for item in semua_items:
+        if len(results) >= num_results:
+            break
+ 
+        title      = item.find("title")
+        link       = item.find("link")
+        pubdate    = item.find("pubdate")
+        source_tag = item.find("source")
+ 
+        title_text  = title.get_text(strip=True)      if title      else "Tanpa Judul"
+        link_text   = link.get_text(strip=True)       if link       else "#"
+        date_text   = pubdate.get_text(strip=True)    if pubdate    else ""
+        source_name = source_tag.get_text(strip=True) if source_tag else ""
+ 
+        # Verifikasi domain
+        is_valid, domain = validate_source(link_text + " " + source_name)
+        if not is_valid:
+            continue
+ 
+        # Skip duplikat
+        if link_text in seen_links:
+            continue
+        seen_links.add(link_text)
+ 
+        # Format tanggal lebih ringkas
+        try:
+            from email.utils import parsedate_to_datetime
+            dt       = parsedate_to_datetime(date_text)
+            date_fmt = dt.strftime("%d %b %Y")
+        except Exception:
+            date_fmt = date_text[:16] if date_text else ""
+ 
+        # Fetch summary 50 kata dari artikel
+        summary = ""
+        if link_text and link_text != "#":
+            summary = fetch_article_summary(link_text, max_words=50)
+ 
+        results.append({
+            "title"   : title_text,
+            "link"    : link_text,
+            "date"    : date_fmt,
+            "source"  : source_name if source_name else domain,
+            "is_valid": True,
+            "summary" : summary,
+        })
+ 
+    if not results:
+        return [{"error": "Tidak ada berita dari 16 sumber terverifikasi. "
+                          "Coba pilih perusahaan lain atau input berita manual di bawah."}]
+ 
+    return results
  
  
 # ─────────────────────────────────────────────────────────────────────────────
