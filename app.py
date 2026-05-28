@@ -684,21 +684,40 @@ if st.session_state["news_searched"]:
 
         for i, article in enumerate(results, 1):
             is_valid   = article.get("is_valid", False)
-            sumber_txt = (
+            link       = article.get("link", "#")
+            source     = article.get("source", "")
+            date       = article.get("date", "")
+
+            # Bangun baris meta — hanya tampilkan jika nilainya ada
+            meta_parts = []
+            if source and source != "-":
+                meta_parts.append(source)
+            if date and date != "-":
+                meta_parts.append(date)
+
+            sumber_badge = (
                 '<span class="news-valid">✅ Sumber Terverifikasi</span>'
                 if is_valid else
                 '<span class="news-invalid">⚠️ Verifikasi Manual</span>'
             )
+            meta_line = " &nbsp;|&nbsp; ".join(meta_parts) + (
+                f" &nbsp;|&nbsp; {sumber_badge}" if meta_parts else sumber_badge
+            )
+
+            # Buat teks link yang bersih
+            link_label = "🔗 Buka Artikel"
+            if source and source != "-":
+                link_label = f"🔗 Buka di {source}"
+
             st.markdown(
                 f'<div class="news-card">'
                 f'<div class="news-title">{i}. {article["title"]}</div>'
-                f'<div class="news-meta">'
-                f'{article["source"]} &nbsp;|&nbsp; {article["date"]} &nbsp;|&nbsp; {sumber_txt}'
-                f'</div></div>',
+                f'<div class="news-meta">{meta_line}</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
-            if article["link"] and article["link"] != "#":
-                st.markdown(f"&nbsp;&nbsp;&nbsp;[🔗 Buka artikel lengkap]({article['link']})")
+            if link and link != "#":
+                st.markdown(f"&nbsp;&nbsp;&nbsp;[{link_label}]({link})")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
