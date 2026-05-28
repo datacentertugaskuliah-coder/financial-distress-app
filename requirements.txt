@@ -1,12 +1,10 @@
-streamlit>=1.32.0
-pandas
+streamlit
 numpy
-scikit-learn
+pandas
 joblib
 nltk
-PySastrawi
-openpyxl
 plotly
 requests
-beautifulsoup4
- 
+openpyxl
+Sastrawi
+scikit-learn
